@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/435f8f03-4a73-46d3-a9d6-d023d6767bb0)# README
+# README
 
 NIche Phenotype MAPping (NIPMAP) analysis from spatial multiplex data: Multiplex Ion Imaging on 41 Triple Negative Breast tumors from [Keren et al, Cell(2018)](10.1016/j.cell.2018.08.039) and In Situ Sequencing data on human lung development from [Sountoulidis et al, 2022](https://doi.org/10.1101/2022.01.11.475631)
 

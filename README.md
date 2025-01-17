@@ -8,16 +8,16 @@ The spatial architecture of tumors has high relevance for diagnostic and therapy
 
 * Jupyter notebook installed
 
-* Python 3.7.13 installed, together with these libraries:
+* Python 3.9.13 installed, together with these libraries:
     ```bash
     pip install matplotlib
     pip install scipy
-    pip install pandas==1.3.5
-    pip install numpy==1.8.1
+    pip install pandas
+    pip install numpy
     pip install scikit-learn
     pip install seaborn
-    pip install qpsolvers==1.9.0
-    pip install mpl_toolkits
+    pip install qpsolvers[proxqp]
+    pip install geopandas
     ```
 * R 4.1.3 with RStudio installed, together with these libraries:
     ```
@@ -61,6 +61,13 @@ Run time is around 20 min for one sample and around 60 min for a 40-patient samp
 
 Note: one sample = one image
 Note #2: NIPMAP doesn't aim to correct cell segmentation error or cell type mis-assignments, this needs to be addressed prior to niche-phenotype mapping. 
+
+## Non-squared data
+If you want to perform NIPMAP on non-squared samples, you can add your tissue annotation files as .geojson for each patient with your cell position tables and add the -mask option:
+ ```bash
+ python3 main_nipmap.py -mask
+ ```
+This will only place sites at radius distance to the border of the tissue.
 
 ## FILES
 

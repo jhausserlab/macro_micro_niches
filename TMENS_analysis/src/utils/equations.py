@@ -55,11 +55,11 @@ def compute_cells_niches_weights(niches,cellsSites,nbNiches=4):
         P = np.dot(niches, niches.T)
         q = -np.dot(niches,site)
         A = np.ones(nbNiches)
-        b = 1
+        b = np.array([1])
         G = np.diag(-np.ones(nbNiches))
         h = np.zeros(nbNiches)
         #print(A)
-        res = solve_qp(P, q, G, h, A, b)
+        res = solve_qp(P, q, G, h, A, b, solver="proxqp")
         sites_alfas[i] = res
         #print("QP solution: x = {}".format(res))
     return sites_alfas

@@ -5,11 +5,15 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KDTree
 import matplotlib.pyplot as plt
 
+import geopandas as gpd
+from shapely.geometry import LineString, Polygon, MultiPolygon, Point
+from shapely.prepared import prep
+import math
 
-def generate_abundance_matrix(cell_types, patient_ids, n_site, radius, method, snr=1, root="../../output/",image_x_size=800, image_y_size=800,
+def generate_abundance_matrix(cell_types, patient_ids, n_site, radius, method, snr=1, root="../../output/", mask = False, image_x_size=800, image_y_size=800,
                               random_seed=False,center_sites_cells=False,border=False):
     #print()
-    return [CellAbundance(p, n_site, radius, cell_types, method=method, snr=snr, root=root,image_x_size=image_x_size, image_y_size=image_y_size, random_seed=random_seed,center_sites_cells=center_sites_cells,border=border) for
+    return [CellAbundance(p, n_site, radius, cell_types, method=method, snr=snr, root=root, mask = mask, image_x_size=image_x_size, image_y_size=image_y_size, random_seed=random_seed,center_sites_cells=center_sites_cells,border=border) for
             p in patient_ids]
 
 
@@ -31,18 +35,22 @@ def join_abundance_matrices(cell_abundances_list,center_sites_cells=False):
 
 class CellAbundance:
     def __init__(self, patient_id, n_sites,
-                 sites_radius, cell_types, root='',
+                 sites_radius, cell_types, root='', mask = False,
                  method='abs', norm_method=None, snr=1, random_seed=False, image_x_size=800, image_y_size=800,center_sites_cells=False,border=False):
         if random_seed:
             np.random.seed(random_seed)
 
         self.patient_id = patient_id
-        if type(n_sites) is dict:
-            self.n_sites = n_sites[self.patient_id]
-        else:
-            self.n_sites = n_sites
         self.sites_radius = sites_radius
+        self.mask = mask
         self.root = root
+        if self.mask:
+            self.buffered_mask, self.min_x, self.min_y, self.max_x, self.max_y, self.n_sites = self._generate_mask_bounds_and_n_sites_from_GeoJSON()
+        else:
+            if type(n_sites) is dict:
+                self.n_sites = n_sites[self.patient_id]
+            else:
+                self.n_sites = n_sites
         self.cell_positions_df = self._load_cell_position_from_csv()
         self.method = method
         self.norm_method = norm_method
@@ -60,7 +68,8 @@ class CellAbundance:
         self.border = border
         # for gaussian weigthing we could select a bigger radius
         self.radius_coeff = 2
-        self.sites_cell_ids = self.calculate_site_groups().keys()
+        self.sites_cell = self.calculate_site_groups()
+        self.sites_cell_ids = self.sites_cell.keys()
         self.cell_types = np.array(cell_types)
         self.abundance_matrix, self.gradient = self.calculate_abundace_matrix()
 
@@ -129,6 +138,29 @@ class CellAbundance:
             self.image_y_size = df['y_size'][0]
         return df
 
+    def _generate_mask_bounds_and_n_sites_from_GeoJSON(self):
+        '''
+        generate a buffered mask from GeoJSON file.
+        Contains positive mask of tissue in an image (patient): Multipolygon
+        Return buffered mask at radius distance from tissue + in an image (patient): Multipolygon
+        '''
+        gdf = gpd.read_file("{}/patient{}_mask.geojson".format(self.root, self.patient_id))
+        original_mask = gdf.geometry.unary_union
+        # Create a new mask by buffering the original mask by self.sites_radius units
+        new_mask = original_mask.buffer(-self.sites_radius)
+        # Define the number of sites
+        min_x, min_y, max_x, max_y = original_mask.bounds
+        # Compute width and height
+        self.image_x_size = round(max_x - min_x)
+        self.image_y_size = round(max_y - min_y)
+        # Compute the size of the image
+        image_size = self.image_x_size * self.image_y_size
+        site_area = round(math.pi * self.sites_radius ** 2)
+        # n_sites = round((image_size/site_area))
+        n_sites = 1000
+        
+        return new_mask, min_x, min_y, max_x, max_y, n_sites
+
     def calculate_site_groups(self):
         """
         generates sites given a number 
@@ -151,9 +183,29 @@ class CellAbundance:
         #############################
        
         if self.center_sites_cells == False:
-            x_centers = np.random.uniform(low=radius, high=self.image_x_size - radius,size=self.n_sites)
-            y_centers = np.random.uniform(low=radius, high=self.image_y_size - radius,size=self.n_sites)
-            centers = np.stack((x_centers, y_centers), axis=-1)
+            if self.mask:
+		# Generate random points
+                x_centers = np.random.uniform(self.min_x, self.max_x, self.n_sites)
+                y_centers = np.random.uniform(self.min_y, self.max_y, self.n_sites)
+                centers_all = np.vstack((x_centers, y_centers)).T
+
+                centers_inside_mask = []
+                # Prepare the mask for faster 'contains' checks
+                prep_buffered_mask = prep(self.buffered_mask)
+                # Filter points that are inside the buffered mask
+                for center in centers_all:
+                    p = Point(center)
+                    if prep_buffered_mask.contains(p):
+                        centers_inside_mask.append(center)
+                    if len(centers_inside_mask) >= self.n_sites:
+                        break
+                centers = np.vstack(centers_inside_mask)
+                x_centers = centers[:, 0] # Redefine x and y centers to get the ones that are in the buffered mask
+                y_centers = centers[:, 1]
+            else:
+                x_centers = np.random.uniform(low=radius, high=self.image_x_size - radius,size=self.n_sites)
+                y_centers = np.random.uniform(low=radius, high=self.image_y_size - radius,size=self.n_sites)
+                centers = np.stack((x_centers, y_centers), axis=-1)
             points = np.stack((x, y), axis=-1)
             tree = KDTree(points, leaf_size=5)
             idx_b = tree.query_radius(centers, r=radius, count_only=False)
@@ -165,17 +217,28 @@ class CellAbundance:
             #print(self.border)
             
             if self.border==False:
-                # Filter cells that are in the border of the image
-                threshX = self.image_x_size - radius
-                threshY = self.image_y_size - radius
-                cells_positions = self.cell_positions_df.loc[((self.cell_positions_df['x']<= threshX) & (self.cell_positions_df['x']>=radius)) & ((self.cell_positions_df['y']<= threshY) & (self.cell_positions_df['y']>=radius))]
-            #print(self.cell_positions_df.shape, cells_positions.shape)
-            #x = self.cell_positions_df['x'].to_numpy().astype(float)
-        #y = self.cell_positions_df['y'].to_numpy().astype(float)
+                if self.mask:
+                    cells_inside_mask = []
+                    # Prepare the mask for faster 'contains' checks
+                    prep_buffered_mask = prep(self.buffered_mask)
+                    # Filter points that are inside the buffered mask
+                    for index, row in self.cell_positions_df.iterrows():
+                        cell = row['x'], row['y']
+                        p = Point(cell)
+                        if prep_buffered_mask.contains(p):
+                            cells_inside_mask.append(cell)
+                    cells_positions = self.cell_positions_df[self.cell_positions_df[['x', 'y']].apply(tuple, axis=1).isin(cells_inside_mask)]
+                else:
+                    # Filter cells that are in the border of the image
+                    threshX = self.image_x_size - radius
+                    threshY = self.image_y_size - radius
+                    cells_positions = self.cell_positions_df.loc[((self.cell_positions_df['x']<= threshX) & (self.cell_positions_df['x']>=radius)) & ((self.cell_positions_df['y']<= threshY) & (self.cell_positions_df['y']>=radius))]
+                #print(self.cell_positions_df.shape, cells_positions.shape)
+                #x = self.cell_positions_df['x'].to_numpy().astype(float)
+            #y = self.cell_positions_df['y'].to_numpy().astype(float)
             else:
                 cells_positions = self.cell_positions_df 
-#                cells_positions = self.cell_positions_df.loc[((self.cell_positions_df['x']<= self.image_x_size) & #(self.cell_positions_df['x']>=0)) & ((self.cell_positions_df['y']<= self.image_y_size) & (self.cell_positions_df['y']>=0))]
-                
+#                cells_positions = self.cell_positions_df.loc[((self.cell_positions_df['x']<= self.image_x_size) & #(self.cell_positions_df['x']>=0)) & ((self.cell_positions_df['y']<= self.image_y_size) & (self.cell_positions_df['y']>=0))]  
             x_centers = cells_positions['x'].to_numpy().astype(float)
             y_centers = cells_positions['y'].to_numpy().astype(float)
             
@@ -208,7 +271,7 @@ class CellAbundance:
         for c in sites.keys():
             #print(c)
             #print(pd.DataFrame({'cell_id': [c[0]], 'cell_type': [c[1]]}))
-            patient_cell_df = patient_cell_df.append(pd.DataFrame({'cell_id': [c[0]], 'cell_type': [c[1]]}))
+            patient_cell_df = pd.concat([patient_cell_df, pd.DataFrame({'cell_id': [c[0]], 'cell_type': [c[1]]})], ignore_index=True)
         return patient_cell_df
 
     def calculate_abundace_matrix(self):
@@ -217,7 +280,7 @@ class CellAbundance:
         :@return: {numpy array}(n_sites, #cell_types) matrix containing the abundance of cells for each site. In case of gaussian counting
         method selected, the gradient matrix is also returned.
         """
-        sites = self.calculate_site_groups()
+        sites = self.sites_cell
         abundance_matrix = []
         cnt_zeroes = 0
         gradients = []

@@ -156,8 +156,7 @@ class CellAbundance:
         # Compute the size of the image
         image_size = self.image_x_size * self.image_y_size
         site_area = round(math.pi * self.sites_radius ** 2)
-        # n_sites = round((image_size/site_area))
-        n_sites = 1000
+        n_sites = round((image_size/site_area))
         
         return new_mask, min_x, min_y, max_x, max_y, n_sites
 

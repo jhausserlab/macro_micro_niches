@@ -69,7 +69,6 @@ if __name__ == "__main__":
   if mask:
     print(f"Using mask from .geojson files in {ROOT_DATA_PATH}")
 
-  '''
   #####----- RADIUS ANALYSIS -----####
   rad = np.linspace(np.log(5), np.log(127), num=10)# get interval of radiuses
   radius = np.rint(np.power(np.e, rad).astype(float))
@@ -85,8 +84,6 @@ if __name__ == "__main__":
       pc = pca.fit_transform(sites)
       expl_var_ratio_gauss[r] = np.cumsum(pca.explained_variance_ratio_)
   radius_pc_all_variance(expl_var_ratio_gauss,radius_lim=25,nPC_lim=3,cells_number=len(CELLTYPES)+1,save_fig=True, path_fig="./plot_rad_var_gauss.svg", pca_limit=6)
-  '''
-  RADIUS = 25
   print(type(RADIUS))
 
   #####----- GENERATE SITES AND COMPUTE CELL ABUNDANCE ----#####
@@ -136,7 +133,6 @@ if __name__ == "__main__":
   
   # shutil.make_archive("/figs_niches","zip", path_toFigs)
 
-  '''
   #####----- GENERATE SITES CENTERED ON CELLS AND THEIR NICHE WEIGHTS ----#####
   print("Computing cells' niche weights, the operation might take some time...")
   CellAbCC_list = generate_abundance_matrix(CELLTYPES, ImageIDs, NSITES,RADIUS,method=METHOD, snr=3,center_sites_cells=True, border=False,root=ROOT_DATA_PATH, mask = mask)
@@ -194,28 +190,4 @@ if __name__ == "__main__":
     
   with open("./params.json","w") as outfile5:
     outfile5.write(params_json)
-  '''
-
-  ##########----- SAVE OUTPUTS IN CSV ----##########
-  ## SAVE PCA AND Archetype Analysis OBJECTS
-  dict_pca = {"PC_proj":pc_proj.tolist()}
-  dict_AA = {"archs_coord": AA.archetypes.tolist(),"nichesCA":niches_cell_profile.tolist()}
-  dict_params = {"cellTypes":CELLTYPES,"ImageID":ImageIDs,"nbsites":[NSITES],"radiusSize":[RADIUS],
-                "nbniches":[NBNICHES],"countMeth":[METHOD],"xsize":[XSIZE],"ysize":[YSIZE],
-                "rootDataPath":[ROOT_DATA_PATH],"rootOutPath":[ROOT_OUTPUT_PATH],"colNiches":COLARCHS.tolist(),"pathFigs":[path_figs]}
-
-  # Serializing json objects
-  PCA_json = json.dumps(dict_pca, indent=4)
-  AA_json = json.dumps(dict_AA, indent=4)
-  params_json = json.dumps(dict_params,indent=4)
-
-  # Writing to .json files
-  with open("./pca_sites.json", "w") as outfile:
-      outfile.write(PCA_json)
-
-  with open("./AA_sites.json","w") as outfile2:
-      outfile2.write(AA_json)
-      
-  with open("./params.json","w") as outfile5:
-      outfile5.write(params_json)
 
